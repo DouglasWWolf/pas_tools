@@ -1,3 +1,12 @@
+#==============================================================================
+# setup_rdmx_nic - Configures the rdmx_dual_nic, assigning half of the 
+#                  contiguous buffer to each of the two NIC channels.  This
+#                  script examines the Linux kernel "memmap" parameter to 
+#                  determine the location and size of the contiguous buffer.
+#
+# Author: D. Wolf
+#==============================================================================
+
 
 #=============================================================================
 # This function expects a value in KMG format and displays the decimal 
@@ -84,20 +93,22 @@ get_contig()
 }
 #=============================================================================
 
+# Ensure that we have the rdmx_dual_nic RTL loaded into the FPGA
+if [ $(pcireg -dec 20) -ne 31725 ]; then
+    echo "The rdmx_dual_nic bitstream is not loaded into the FPGA!"
+    exit
+fi
+
+
 # Fetch the address and size of the reserved contiguous buffer
 get_contig
 if [ -z $CONTIG_ADDR ]; then
     echo "kernel memmap parameter not found!" 1>&2
     exit 1    
 fi
-printf "CONTIG_ADDR: %12u %12X\n" $CONTIG_ADDR $CONTIG_ADDR
-printf "CONTIG_SIZE: %12u %12X\n" $CONTIG_SIZE $CONTIG_SIZE
 
 # Source the API for the rdmx_dual_nic
 source $(dirname $0)/rdmx_nic_api.sh
-if [ $? -ne 0 ]; then
-    test $BASH_SOURCE == $0 && exit 1 || return
-fi
 
 # Each NIC will get half of the reserved contiguous buffer
 half_size=$(($CONTIG_SIZE / 2))

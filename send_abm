@@ -1,1 +1,116 @@
-source setup_rdmx_nic --silent
+#==============================================================================
+# send_abm - Sends ABMs to an Indy
+# Author: D. Wolf
+#
+# Provide either 1 or 2 filenames on the command line.  Each file should be
+# exactly 1MB (i.e. 1024 * 1024 bytes) in size.  If only one filename is
+# provided, it will be sent to both channels
+#
+# This script requires that the u55c_rdmx_dual_nic RTL be loaded into the 
+# FPGA card
+#==============================================================================
+# Ensure that we have the rdmx_dual_nic RTL loaded into the FPGA
+if [ $(pcireg -dec 20) -ne 31725 ]; then
+    echo "The rdmx_dual_nic bitstream is not loaded into the FPGA!"
+    exit
+fi
+
+# For the moment, we don't have our filenames
+file1=
+file2=
+
+# Parse the 1st filename from the command line
+if [ ! -z $1 ]; then
+    file1=$1
+    shift
+fi
+
+# Parse the 2nd filename from the command line
+if [ ! -z $1 ]; then
+    file2=$1
+    shift
+fi
+
+# If there was only 1 filename, both filenames are the same
+test -z $file2 && file2=$file1
+
+# Ensure that there was at least 1 filename on the command line
+if [ -z $file1 ]; then
+    echo "Missing filename on command line" 1>&2
+    exit 1
+fi
+
+# Ensure file1 exists
+if [ ! -f $file1 ]; then
+    echo "Not found:" $file1
+    exit 1
+fi
+
+# Ensure file2 exists
+if [ ! -f $file2 ]; then
+    echo "Not found:" $file2
+    exit 1
+fi
+
+# Source the API for the rdmx_dual_nic
+source $(dirname $0)/rdmx_nic_api.sh
+
+# In the rdmx_dual_nic, each channel gets half the contig buffer
+setup_rdmx_nic --silent || exit 1
+
+# Fetch the base address and size of the two NIC channels
+nic0_base_addr=$(nic0 pci_range)
+nic1_base_addr=$(nic1 pci_range)
+
+# Extract just the base addresses
+nic0_base_addr=$((${nic0_base_addr%% *}))
+nic1_base_addr=$((${nic1_base_addr%% *}))
+
+# These are the two addresses where we're going to store the ABMs
+abm0_buffer=$((nic0_base_addr + 0x1000000))
+abm1_buffer=$((nic1_base_addr + 0x1000000))
+
+# Load the two files into the buffers
+physram $abm0_buffer 0x10_0000 -load $file1
+physram $abm1_buffer 0x10_0000 -load $file2
+
+# And send the two ABMs
+nic0 xmit $abm0_buffer 0x10_0000
+nic1 xmit $abm1_buffer 0x10_0000
+
+
+#-------------------------------------------------------------------- 
+# If you comment out this "exit 0" and insert loopback modules into
+# the two QSFP ports, the remaining code will examine the received
+# ABMs, compare them to the ABMs that were sent, and issue an error
+# message if they don't match
+#--------------------------------------------------------------------
+exit 0
+
+# These are the names of our two temporary outfile files
+testfile1=~/abm0_test.dat
+testfile2=~/abm1_test.dat
+
+# Wait a moment to ensure both ABMs have been received
+sleep .5
+
+# Fetch the two recieved ABMs
+physram $nic0_base_addr 0x10_0000 -save $testfile1
+physram $nic1_base_addr 0x10_0000 -save $testfile2
+
+# Find out if the ABMs we received match what we sent
+diff -q $file1 $testfile1 >/dev/null
+status1=$?
+diff -q $file2 $testfile2 >/dev/null
+status2=$?
+
+# If both tests passed, say so
+if [ $status1 -eq 0 ] && [ $status2 -eq 0 ]; then
+    rm -rf $testfile1 $testfile2
+    echo "Passed"
+    exit 0
+fi
+
+# If either of the received ABMs don't match, complain!
+test $status1 -eq 0 || echo "FAILED! ABM0 doesn't match"
+test $status2 -eq 0 || echo "FAILED! ABM1 doesn't match"
