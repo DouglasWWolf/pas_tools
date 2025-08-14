@@ -1,0 +1,15 @@
+dir=/opt/pas_tools
+if [ "$PWD" != "$dir" ]; then
+    echo "Must be in $dir to do this"
+    exit 1
+fi
+
+make_suid()
+{
+    sudo chown root $1
+    sudo chgrp root $1
+    sudo chmod 4755 $1
+}
+
+make_suid getpackets
+
