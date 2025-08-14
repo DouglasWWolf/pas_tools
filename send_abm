@@ -22,18 +22,40 @@ fi
 # For the moment, we don't have our filenames
 file1=
 file2=
+selftest=0
 
-# Parse the 1st filename from the command line
-if [ ! -z $1 ]; then
-    file1=$1
-    shift
-fi
+# Parse the command line
+while :; do
 
-# Parse the 2nd filename from the command line
-if [ ! -z $1 ]; then
-    file2=$1
-    shift
-fi
+    # Are we out of command line parameters?
+    test -z $1 && break
+
+    # Check for the selftest switch
+    if [ $1 == "-selftest" ] || [ $1 == "--selftest" ]; then
+        selftest=1
+        shift
+        continue
+    fi
+
+    # Check for the 1st filename
+    if [ -z $file1 ]; then
+        file1=$1
+        shift
+        continue
+    fi
+
+    # Check for the 2nd filename
+    if [ -z $file2 ]; then
+        file2=$1
+        shift
+        continue
+    fi
+
+    # If we get here, something's awry
+    echo "Unexpected parameter on command line" 1>&2
+    exit 1
+
+done
 
 # If there was only 1 filename, both filenames are the same
 test -z $file2 && file2=$file1
@@ -84,12 +106,12 @@ nic1 xmit $abm1_buffer 0x10_0000
 
 
 #-------------------------------------------------------------------- 
-# If you comment out this "exit 0" and insert loopback modules into
-# the two QSFP ports, the remaining code will examine the received
-# ABMs, compare them to the ABMs that were sent, and issue an error
-# message if they don't match
+# If you insert loopback modules into the two QSFP ports and run this
+# script with the "-selftest" option, the remaining code will examine 
+# the received ABMs, compare them to the ABMs that were sent, and
+# will issue an error message if they don't match
 #--------------------------------------------------------------------
-exit 0
+test $selftest -eq 0 && exit 0
 
 # These are the names of our two temporary outfile files
 testfile1=~/abm0_test.dat
