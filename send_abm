@@ -8,6 +8,9 @@
 #
 # This script requires that the u55c_rdmx_dual_nic RTL be loaded into the 
 # FPGA card
+#
+# This script requires that rdmc_nic_api.sh exists in the same directory as
+# the script
 #==============================================================================
 
 # Ensure that we have the rdmx_dual_nic RTL loaded into the FPGA
