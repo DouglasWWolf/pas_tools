@@ -9,6 +9,7 @@
 # This script requires that the u55c_rdmx_dual_nic RTL be loaded into the 
 # FPGA card
 #==============================================================================
+
 # Ensure that we have the rdmx_dual_nic RTL loaded into the FPGA
 if [ $(pcireg -dec 20) -ne 31725 ]; then
     echo "The rdmx_dual_nic bitstream is not loaded into the FPGA!"
