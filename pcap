@@ -1,0 +1,38 @@
+if [ $(pcireg -dec 20) -ne 121475 ]; then
+    echo "The packet_capture bitstream is not loaded into the FPGA!"
+    exit
+fi
+
+# Start the capture
+pcireg 0x1004 1
+
+# Wait for the user to press ENTER before dumping packets
+echo "Press ENTER to dump packets"
+read
+
+# Find out how many packets we're going to dump out
+count=5000
+test "$1" !=  "" && count=$1 
+
+#
+# Force unflushed packets to be flushed to RAM 
+#
+pcireg 0x1004 0
+sleep .1
+
+#
+# Determine how many packets to dump out
+#
+count=5000
+test "$1" !=  "" && count=$1 
+
+#
+# Dump packets to disk from both channels
+#
+mkdir -p ~/packets
+cd ~/packets
+getpackets -ch 0 $count
+getpackets -ch 1 $count
+
+# Tell the user where their .pcap files are
+echo "Packet dumps are in ~/packets"
