@@ -1,0 +1,101 @@
+#==============================================================================
+# contig - Reports the location and size of the reserved contiguous buffer
+# Author: D. Wolf
+#==============================================================================
+
+
+
+#=============================================================================
+# This function expects a value in KMG format and displays the decimal 
+# equivalent of the value.   
+#=============================================================================
+kmg_to_num()
+{
+    # Fetch the token we're supposed to translate
+    token=$1
+    
+    # Fetch the base value (without the K, M, or G modifiers)
+    value=$(echo $token | sed 's/[[:alpha:]]//g')
+
+    # If it's a "K" modifer, return the scaled value
+    echo $token | grep -q K
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 ))
+        return
+    fi
+
+    # If it's a "M" modifer, return the scaled value
+    echo $token | grep -q M
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 * 1024 ))
+        return
+    fi
+
+    # If it's a "G" modifer, return the scaled value
+    echo $token | grep -q G
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 * 1024 * 1024))
+        return
+    fi
+
+    # If we get here, there was no K, M, or G modifier
+    echo $token
+}
+#=============================================================================
+
+
+#=============================================================================
+# This function searches for the "memmap" kernel parameter and parses it to
+# determine the address and size of the reserved contiguous buffer
+#=============================================================================
+get_contig()
+{
+    # For the moment, we don't known the address or size of our contig buffer
+    export CONTIG_ADDR=
+    export CONTIG_SIZE=
+
+    # Fetch the Linux boot command
+    cmdline=$(cat /proc/cmdline)
+
+    # Turn that into an array
+    word=(${cmdline})
+
+    # So far, we don't have a memmap token
+    memmap=""
+
+    # Loop through each of the tokens, looking for "memmap="
+    for token in ${word[@]}; do
+        echo $token | grep "^memmap=" >/dev/null
+        if [ $? -eq 0 ]; then
+            memmap=${token##*=}
+            break;
+        fi
+    done
+
+    # If we don't have a memmap setting, we're done
+    test -z $memmap && return
+
+    # If there's not a dollar sign in that token, we're done
+    echo $memmap | grep "\$" >/dev/null || return
+
+    # Extract the size of the contig buffer
+    token1=${memmap%%\$*}
+    
+    # Extract the address of the contig buffer
+    token2=${memmap#*$}
+
+    # Export the address and size of the reserved contig buffer
+    export CONTIG_SIZE=$(kmg_to_num $token1)
+    export CONTIG_ADDR=$(kmg_to_num $token2)
+}
+#=============================================================================
+
+
+get_contig
+test -z $CONTIG_SIZE && exit 1
+if [ "$1" == "-plain" ] || [ "$1" == "--plain" ]; then
+    printf "%u %u\n" $CONTIG_ADDR $CONTIG_SIZE
+else
+    mb=$(( CONTIG_SIZE / (1024 * 1024) ))
+    printf "Contiguous buffer is %u MB located at 0x%X\n" $mb $CONTIG_ADDR
+fi

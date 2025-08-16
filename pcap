@@ -1,3 +1,11 @@
+#==============================================================================
+# pcap - Captures packets
+# Author: D. Wolf
+#
+# This script requires that the u55c_packet_capture RTL be loaded into the 
+# FPGA card
+#==============================================================================
+
 if [ $(pcireg -dec 20) -ne 121475 ]; then
     echo "The packet_capture bitstream is not loaded into the FPGA!"
     exit

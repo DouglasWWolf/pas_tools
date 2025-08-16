@@ -1,3 +1,11 @@
+#==============================================================================
+# packet_counts - Classifies, counts, and reports number of received packets
+# Author: D. Wolf
+#
+# This script requires that the u55c_rx_packet_ctr RTL be loaded into the 
+# FPGA card
+#==============================================================================
+
 # Ensure that we have the packet-counter RTL loaded into the FPGA
 if [ $(pcireg -dec 20) -ne 52125 ]; then
     echo "The rx_packet_ctr bitstream is not loaded into the FPGA!"
