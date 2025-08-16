@@ -116,6 +116,7 @@ latest_version()
 load_rdmx_nic()
 {
     folder=u55c_rdmx_dual_nic
+    existing=$(pcireg -dec 20)
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
     echo "Loading $folder $version into FPGA"
@@ -125,7 +126,7 @@ load_rdmx_nic()
     fi
     cd $version
     ./load_bitstream.sh
-    ask_reboot
+    test $existing -ne 31725 && ask_reboot
 }
 #=============================================================================
 
@@ -136,6 +137,7 @@ load_rdmx_nic()
 load_pcap()
 {
     folder=u55c_packet_capture
+    existing=$(pcireg -dec 20)
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
     echo "Loading $folder $version into FPGA"
@@ -145,7 +147,7 @@ load_pcap()
     fi
     cd $version
     ./load_bitstream.sh
-    ask_reboot
+    test $existing -ne 121475 && ask_reboot
 }
 #=============================================================================
 

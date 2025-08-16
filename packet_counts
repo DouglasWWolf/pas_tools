@@ -13,21 +13,6 @@ if [ "$1" == "-clear" ] || [ "$1" == "--clear" ]; then
     exit 0
 fi
 
-# Does the user want us to report the QSFP link status?
-if [ "$1" == "-link" ] || [ "$1" == "--link" ]; then
-    if [ $(get_link_status) -eq 1 ]; then
-        echo "link_ok"
-        exit 0
-    else
-        echo -n "QSFP_0 "
-        test $(get_link_status 0) -eq 1 && echo "link_ok" || echo "no_link"
-        echo -n "QSFP_1 "
-        test $(get_link_status 1) -eq 1 && echo "link_ok" || echo "no_link"
-    fi
-    exit 1
-fi
-
-
 show_channel()
 {
       src_msg=""
