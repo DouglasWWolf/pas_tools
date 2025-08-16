@@ -21,6 +21,7 @@ show_status()
     result=
     link_ok=link_ok
     no_link=no_link
+
     if [ -z $channel ] && [ $1 -eq 1 ] && [ $2 -eq 1 ]; then
         result=$link_ok
 
