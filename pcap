@@ -37,10 +37,11 @@ test "$1" !=  "" && count=$1
 #
 # Dump packets to disk from both channels
 #
-mkdir -p ~/packets
-cd ~/packets
+folder=~/packets
+mkdir -p $folder
+cd $folder
 getpackets -ch 0 $count
 getpackets -ch 1 $count
 
 # Tell the user where their .pcap files are
-echo "Packet dumps are in ~/packets"
+echo "Packet dumps are in $folder"
