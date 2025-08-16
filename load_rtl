@@ -68,7 +68,7 @@ latest_version()
     # Get a list of directory entries
     entries=($(ls))
 
-    # Loop through all of the directories we find
+    # Loop through all of the entries we find
     for version in ${entries[@]}; do
 
         # Skip everything that's not a directory
@@ -131,7 +131,7 @@ load_rdmx_nic()
 
 
 #=============================================================================
-# Loads the packet_capture into the FPGA
+# Loads packet_capture into the FPGA
 #=============================================================================
 load_pcap()
 {
@@ -151,6 +151,43 @@ load_pcap()
 
 
 
+#=============================================================================
+# Loads nsdp_checker into the FPGA
+#=============================================================================
+load_nsdp_checker()
+{
+    folder=u55c_nsdp_checker
+    cd $rtl_folder/$folder
+    test -z $version && version=$(latest_version)
+    echo "Loading $folder $version into FPGA"
+    if [ ! -d $version ]; then
+        echo "Not found: $PWD/$version"
+        exit 1      
+    fi
+    cd $version
+    ./load_bitstream.sh
+}
+#=============================================================================
+
+
+#=============================================================================
+# Loads rx_counter into the FPGA
+#=============================================================================
+load_rx_counter()
+{
+    folder=u55c_rx_packet_ctr
+    cd $rtl_folder/$folder
+    test -z $version && version=$(latest_version)
+    echo "Loading $folder $version into FPGA"
+    if [ ! -d $version ]; then
+        echo "Not found: $PWD/$version"
+        exit 1      
+    fi
+    cd $version
+    ./load_bitstream.sh
+}
+#=============================================================================
+
 
 # Fetch the name of the thing we're supposed to load
 rtl=$1
@@ -169,6 +206,14 @@ case "$rtl" in
 
     "pcap")
         load_pcap
+        ;;
+
+    "nsdp_checker")
+        load_nsdp_checker
+        ;;
+
+    "rx_counter")
+        load_rx_counter
         ;;
 
     *)
