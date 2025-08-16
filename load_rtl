@@ -126,7 +126,7 @@ load_rdmx_nic()
     fi
     cd $version
     ./load_bitstream.sh
-    test $existing -ne 31725 && ask_reboot
+    test $existing -eq 31725 && echo "No reboot required" || ask_reboot
 }
 #=============================================================================
 
@@ -147,7 +147,7 @@ load_pcap()
     fi
     cd $version
     ./load_bitstream.sh
-    test $existing -ne 121475 && ask_reboot
+    test $existing -eq 121475 && echo "No reboot required" || ask_reboot    
 }
 #=============================================================================
 
