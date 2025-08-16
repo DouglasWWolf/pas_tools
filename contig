@@ -39,7 +39,7 @@ kmg_to_num()
     fi
 
     # If we get here, there was no K, M, or G modifier
-    echo $token
+    echo $value
 }
 #=============================================================================
 
