@@ -64,8 +64,8 @@ link_stat_rdmx_dual_nic()
 link_stat_packet_capture()
 {
     status=$(pcireg -dec 0x1010)
-    stat0=$(( (status >> 0)  & 1))
-    stat1=$(( (status >> 1)  & 1))
+    stat0=$(( (status >> 0) & 1))
+    stat1=$(( (status >> 1) & 1))
     show_status $stat0 $stat1
 }
 #==============================================================================
