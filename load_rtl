@@ -115,11 +115,10 @@ latest_version()
 #=============================================================================
 load_rdmx_nic()
 {
-    name=rdmx_nic
     folder=u55c_rdmx_dual_nic
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
-    echo "Loading $name $version into FPGA"
+    echo "Loading $folder $version into FPGA"
     if [ ! -d $version ]; then
         echo "Not found: $PWD/$version"
         exit 1      
@@ -131,9 +130,35 @@ load_rdmx_nic()
 #=============================================================================
 
 
+#=============================================================================
+# Loads the packet_capture into the FPGA
+#=============================================================================
+load_pcap()
+{
+    folder=u55c_packet_capture
+    cd $rtl_folder/$folder
+    test -z $version && version=$(latest_version)
+    echo "Loading $folder $version into FPGA"
+    if [ ! -d $version ]; then
+        echo "Not found: $PWD/$version"
+        exit 1      
+    fi
+    cd $version
+    ./load_bitstream.sh
+    ask_reboot
+}
+#=============================================================================
+
+
+
+
 # Fetch the name of the thing we're supposed to load
 rtl=$1
+
+# Fetch the version we should load
 version=$2
+
+# If there was no name provided, just show the usage
 test -z $rtl && help
 
 case "$rtl" in
@@ -141,10 +166,14 @@ case "$rtl" in
     "rdmx_nic")
         load_rdmx_nic
         ;;
+
+    "pcap")
+        load_pcap
+        ;;
+
     *)
         echo "Invalid RTL name"
         exit 1
 esac
 
-ask_reboot
 
