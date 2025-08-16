@@ -1,24 +1,45 @@
 #==============================================================================
 # link_status - Reports the QSFP link status provided by various RTL designs
 #
+# If first parameter is "0", will report only the status of QSFP_0.
+# If first parameter is "1", will report only the status of QSFP_1.
+#
 # Author: D. Wolf
 #==============================================================================
 
+# Grab the channel parameter from the command line
+channel=$1
+shift
+
 #==============================================================================
-# Display the link status 
+# Display the link status.
+#   $1 = The status of QSFP_0 (1=link is up, 0 = link is down)
+#   $2 = The status of QSFP_1 (1=link is up, 0 = link is down)
 #==============================================================================
 show_status()
 {
-    if [ $1 -eq 1 ] && [ $2 -eq 1 ]; then
-        echo "link_ok"
-        exit 0
+    result=
+    link_ok=link_ok
+    no_link=no_link
+    if [ -z $channel ] && [ $1 -eq 1 ] && [ $2 -eq 1 ]; then
+        result=$link_ok
+
+    elif [ "$channel" == "0" ]; then
+        test $1 -eq 1 && result=$link_ok || result=$no_link
+
+    elif [ "$channel" == "1" ]; then
+        test $2 -eq 1 && result=$link_ok || result=$no_link
+
     else
         echo -n "QSFP_0 "
-        test $1 -eq 1 && echo "link_ok" || echo "no_link"
+        test $1 -eq 1 && echo $link_ok || echo $no_link
         echo -n "QSFP_1 "
-        test $2 -eq 1 && echo "link_ok" || echo "no_link"
+        test $2 -eq 1 && echo $link_ok || echo $no_link
+        exit 1
     fi
-    exit 1
+    
+    echo $result
+    test $result == $link_ok && exit 0 || exit 1
 }
 #==============================================================================
 
