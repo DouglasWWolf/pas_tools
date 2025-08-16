@@ -1,0 +1,147 @@
+
+rtl_folder=~/rtl
+
+#=============================================================================
+# This prompts the user then (with the user's permission) reboots the system
+#=============================================================================
+ask_reboot()
+{
+    while :; do
+        echo -n "System needs to reboot.  Reboot now? (y/N) "
+        read a
+        if [ "$a" == "n" ] || [ "$a" == "N" ] || [ "$a" == "" ]; then
+            echo "You must manually reboot before using the FPGA" 1>&2
+            exit 1
+        fi
+        if [ "$a" == "y" ] || [ "$a" == "Y" ]; then
+            #sudo reboot now
+            echo "Pretending to reboot"
+            exit 1
+        fi
+    done
+}
+#=============================================================================
+
+
+#=============================================================================
+# This function displays help and exits
+#=============================================================================
+help()
+{
+    # If no command parameters, just show help
+    if [ -z $rtl ]; then
+        echo "Usage:"
+        echo "  load_rtl rdmx_nic [version]"
+        echo "  load_rtl pcap [version]"
+        echo "  load_rtl nsdp_checker [version]"
+        echo "  load_rtl rx_counter [version]"
+        exit 0
+    fi
+}
+#=============================================================================
+
+
+#=============================================================================
+# This function searches a directory for every folder that looks like 
+# digits.digits.digits.    It then finds the logically highest version number
+# and displays it
+#=============================================================================
+latest_version()
+{
+
+    # Determine whether we need to switch to a new directory
+    if [ ! -z $1 ]; then
+        folder=$1
+        if [ ! -d $folder ]; then
+            echo "Not found:" $folder 1>&2
+            exit 1
+        fi
+        cd $folder
+    fi
+
+    # We don't yet have a version number
+    max_code=0
+    max_ver=
+
+    # Get a list of directory entries
+    entries=($(ls))
+
+    # Loop through all of the directories we find
+    for version in ${entries[@]}; do
+
+        # Skip everything that's not a directory
+        test -d $version || continue
+
+        # Does this folder name fit the pattern?
+        echo $version | grep -q "[0-9]\+\.[0-9]\+\.[0-9]\+" 
+
+        # If the folder name isn't digits.digits.digits, skip it
+        test $? -eq 0 || continue;
+
+        # Turn the version into an array of values
+        IFS="." read -ra a <<< $version
+
+        # Remove leading zeros from those values
+        p1=$(echo ${a[0]} | sed 's/0*//')
+        p2=$(echo ${a[1]} | sed 's/0*//')
+        p3=$(echo ${a[2]} | sed 's/0*//')
+
+        # Any blank field is actually a zero
+        test "$p1" == "" && p1=0
+        test "$p2" == "" && p2=0
+        test "$p3" == "" && p3=0                
+
+        # Turn the three parts into a single integer
+        code=$(( ($p1 * 2**32) | ($p2 * 2**16) | $p3  ))
+
+        # Find the highest integer and keep track of
+        # the corresponding version
+        if [ $code -gt $max_code ]; then
+            max_code=$code
+            max_ver=$version
+        fi
+    done
+
+    # Display the highest version number found
+    echo $max_ver
+}
+#=============================================================================
+
+
+#=============================================================================
+# Loads the rdmx_dual_nic into the FPGA
+#=============================================================================
+load_rdmx_nic()
+{
+    name=rdmx_nic
+    folder=u55c_rdmx_dual_nic
+    cd $rtl_folder/$folder
+    test -z $version && version=$(latest_version)
+    echo "Loading $name $version into FPGA"
+    if [ ! -d $version ]; then
+        echo "Not found: $PWD/$version"
+        exit 1      
+    fi
+    cd $version
+    ./load_bitstream.sh
+}
+#=============================================================================
+
+
+# Fetch the name of the thing we're supposed to load
+rtl=$1
+version=$2
+test -z $rtl && help
+
+case "$rtl" in
+
+    "rdmx_nic")
+        load_rdmx_nic
+        ;;
+    *)
+        echo "Invalid RTL name"
+        exit 1
+esac
+
+ask_reboot
+
