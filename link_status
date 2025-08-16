@@ -88,6 +88,7 @@ case $rtl_type in
     31725)
         link_stat_rdmx_dual_nic
         ;;
+
     121475)
         link_stat_packet_capture
         ;;
