@@ -5,7 +5,7 @@
 #==============================================================================
 
 #==============================================================================
-# Report the link status 
+# Display the link status 
 #==============================================================================
 show_status()
 {
@@ -58,8 +58,20 @@ link_stat_rdmx_dual_nic()
 #==============================================================================
 
 
+#==============================================================================
+# Report the link status from RTL rdmx_dual_nic
+#==============================================================================
+link_stat_packet_capture()
+{
+    status=$(pcireg -dec 0x1010)
+    stat0=$(( (status >> 0)  & 1))
+    stat1=$(( (status >> 1)  & 1))
+    show_status $stat0 $stat1
+}
+#==============================================================================
 
-# Ensure that we have the packet-counter RTL loaded into the FPGA
+
+# Determine which RTL is loaded into the FPGA
 rtl_type=$(pcireg -dec 20)
 
 
@@ -75,6 +87,9 @@ case $rtl_type in
 
     31725)
         link_stat_rdmx_dual_nic
+        ;;
+    121475)
+        link_stat_packet_capture
         ;;
     *)
         echo "No useful RTL loaded in FPGA"
