@@ -4,25 +4,32 @@
 # Author: D. Wolf
 #==============================================================================
 
+#==============================================================================
+# Report the link status 
+#==============================================================================
+show_status()
+{
+    if [ $1 -eq 1 ] && [ $2 -eq 1 ]; then
+        echo "link_ok"
+        exit 0
+    else
+        echo -n "QSFP_0 "
+        test $1 -eq 1 && echo "link_ok" || echo "no_link"
+        echo -n "QSFP_1 "
+        test $2 -eq 1 && echo "link_ok" || echo "no_link"
+    fi
+    exit 1
+}
+#==============================================================================
+
 
 #==============================================================================
 # Report the link status from RTL rx_packet_ctr
 #==============================================================================
 link_stat_rx_packet_ctr()
 {
-    # Load the API
     source "$(dirname $0)/rx_packet_ctr_api.sh"
-
-    if [ $(get_link_status) -eq 1 ]; then
-        echo "link_ok"
-        exit 0
-    else
-        echo -n "QSFP_0 "
-        test $(get_link_status 0) -eq 1 && echo "link_ok" || echo "no_link"
-        echo -n "QSFP_1 "
-        test $(get_link_status 1) -eq 1 && echo "link_ok" || echo "no_link"
-    fi
-    exit 1
+    show_status $(get_link_status 0) $(get_link_status 1)
 }
 #==============================================================================
 
@@ -32,19 +39,21 @@ link_stat_rx_packet_ctr()
 #==============================================================================
 link_stat_nsdp_checker()
 {
-    # Load the API
     source "$(dirname $0)/nsdp_checker_api.sh"
+    show_status $(get_pcs_status 0) $(get_pcs_status 1)
+}
+#==============================================================================
 
-    if [ $(get_pcs_status) -eq 1 ]; then
-        echo "link_ok"
-        exit 0
-    else
-        echo -n "QSFP_0 "
-        test $(get_pcs_status 0) -eq 1 && echo "link_ok" || echo "no_link"
-        echo -n "QSFP_1 "
-        test $(get_pcs_status 1) -eq 1 && echo "link_ok" || echo "no_link"
-    fi
-    exit 1
+
+#==============================================================================
+# Report the link status from RTL rdmx_dual_nic
+#==============================================================================
+link_stat_rdmx_dual_nic()
+{
+    source "$(dirname $0)/rdmx_nic_api.sh"
+    stat0=$(( $(nic0 status) & 1 ))
+    stat1=$(( $(nic1 status) & 1 ))
+    show_status $stat0 $stat1
 }
 #==============================================================================
 
@@ -64,6 +73,9 @@ case $rtl_type in
         link_stat_nsdp_checker
         ;;
 
+    31725)
+        link_stat_rdmx_dual_nic
+        ;;
     *)
         echo "No useful RTL loaded in FPGA"
         exit 1
