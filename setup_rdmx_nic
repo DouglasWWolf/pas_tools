@@ -71,7 +71,7 @@ get_contig()
 
     # Loop through each of the tokens, looking for "memmap="
     for token in ${word[@]}; do
-        echo $token | grep "^memmap=" >/dev/null
+        echo $token | grep -q "^memmap="
         if [ $? -eq 0 ]; then
             memmap=${token##*=}
             break;
@@ -82,7 +82,7 @@ get_contig()
     test -z $memmap && return
 
     # If there's not a dollar sign in that token, we're done
-    echo $memmap | grep "\$" >/dev/null || return
+    echo $memmap | grep -q "\$" || return
 
     # Extract the size of the contig buffer
     token1=${memmap%%\$*}
