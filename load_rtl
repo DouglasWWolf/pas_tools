@@ -10,12 +10,14 @@ ask_reboot()
         echo -n "System needs to reboot.  Reboot now? (y/N) "
         read a
         if [ "$a" == "n" ] || [ "$a" == "N" ] || [ "$a" == "" ]; then
+            echo 
+            echo "==============================================" 1>&2
             echo "You must manually reboot before using the FPGA" 1>&2
+            echo "==============================================" 1>&2
             exit 1
         fi
         if [ "$a" == "y" ] || [ "$a" == "Y" ]; then
-            #sudo reboot now
-            echo "Pretending to reboot"
+            sudo reboot now
             exit 1
         fi
     done
@@ -124,6 +126,7 @@ load_rdmx_nic()
     fi
     cd $version
     ./load_bitstream.sh
+    ask_reboot
 }
 #=============================================================================
 
