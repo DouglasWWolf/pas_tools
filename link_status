@@ -4,9 +4,6 @@
 # Author: D. Wolf
 #==============================================================================
 
-# Ensure that we have the packet-counter RTL loaded into the FPGA
-rtl_type=$(pcireg -dec 20)
-
 
 #==============================================================================
 # Report the link status from RTL rx_packet_ctr
@@ -29,12 +26,43 @@ link_stat_rx_packet_ctr()
 }
 #==============================================================================
 
+
+#==============================================================================
+# Report the link status from RTL nsdp_checker
+#==============================================================================
+link_stat_nsdp_checker()
+{
+    # Load the API
+    source "$(dirname $0)/nsdp_checker_api.sh"
+
+    if [ $(get_pcs_status) -eq 1 ]; then
+        echo "link_ok"
+        exit 0
+    else
+        echo -n "QSFP_0 "
+        test $(get_pcs_status 0) -eq 1 && echo "link_ok" || echo "no_link"
+        echo -n "QSFP_1 "
+        test $(get_pcs_status 1) -eq 1 && echo "link_ok" || echo "no_link"
+    fi
+    exit 1
+}
+#==============================================================================
+
+
+
+# Ensure that we have the packet-counter RTL loaded into the FPGA
+rtl_type=$(pcireg -dec 20)
+
+
 case $rtl_type in
 
     52125)
         link_stat_rx_packet_ctr
         ;;
 
+    12266)
+        link_stat_nsdp_checker
+        ;;
 
     *)
         echo "No useful RTL loaded in FPGA"
