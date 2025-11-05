@@ -114,6 +114,10 @@ case $rtl_type in
     121475)
         link_stat_packet_capture
         ;;
+        
+    642024)
+        echo "link_status not supported by loopback" 1>&2
+        ;;
     *)
         echo "No useful RTL loaded in FPGA"
         exit 1

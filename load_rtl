@@ -40,6 +40,7 @@ help()
         echo "  load_rtl pcap [version]"
         echo "  load_rtl nsdp_checker [version]"
         echo "  load_rtl rx_counter [version]"
+        echo "  load_rtl loopback [version]"
         exit 0
     fi
 }
@@ -193,6 +194,25 @@ load_rx_counter()
 }
 #=============================================================================
 
+#=============================================================================
+# Loads rx_counter into the FPGA
+#=============================================================================
+load_loopback()
+{
+    folder=u55c_loopback
+    cd $rtl_folder/$folder
+    test -z $version && version=$(latest_version)
+    echo "Loading $folder $version into FPGA"
+    if [ ! -d $version ]; then
+        echo "Not found: $PWD/$version"
+        exit 1      
+    fi
+    cd $version
+    ./load_bitstream.sh
+}
+#=============================================================================
+
+
 
 # Fetch the name of the thing we're supposed to load
 rtl=$1
@@ -220,6 +240,11 @@ case "$rtl" in
     "rx_counter")
         load_rx_counter
         ;;
+
+    "loopback")
+        load_loopback
+        ;;
+
 
     *)
         echo "Invalid RTL name"
