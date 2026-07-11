@@ -12,4 +12,5 @@ make_suid()
 }
 
 make_suid getpackets
+make_suid dump_fast_pcap
 
