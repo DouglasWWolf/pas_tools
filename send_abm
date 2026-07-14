@@ -97,21 +97,19 @@ abm0_buffer=$((nic0_base_addr + 0x1000000))
 abm1_buffer=$((nic1_base_addr + 0x1000000))
 
 # Find out whether we're using /dev/pmem0 to address RAM
-offset=0
 pmem=
 if [ -b /dev/pmem0 ]; then
-   read -r _ offset <<< $(contig -plain)
-   pmem=-pmem
+   read -r _ CONTIG_ADDR <<< $(contig -plain)
+   pmem="-pmem $CONTIG_ADDR"
 fi
 
 # Load the two files into the buffers
-physram $pmem $(abm0_buffer - offset) 0x10_0000 -load $file1
-physram $pmem $(abm1_buffer - offset) 0x10_0000 -load $file2
+physram $pmem $abm0_buffer 0x10_0000 -load $file1
+physram $pmem $abm1_buffer 0x10_0000 -load $file2
 
 # And send the two ABMs
 nic0 xmit $abm0_buffer 0x10_0000
 nic1 xmit $abm1_buffer 0x10_0000
-
 
 #-------------------------------------------------------------------- 
 # If you insert loopback modules into the two QSFP ports and run this
@@ -129,8 +127,8 @@ testfile2=~/abm1_test.dat
 sleep .5
 
 # Fetch the two recieved ABMs
-physram $pmem $(nic0_base_addr - offset) 0x10_0000 -save $testfile1
-physram $pmem $(nic1_base_addr - offset) 0x10_0000 -save $testfile2
+physram $pmem $nic0_base_addr 0x10_0000 -save $testfile1
+physram $pmem $nic1_base_addr 0x10_0000 -save $testfile2
 
 # Find out if the ABMs we received match what we sent
 diff -q $file1 $testfile1 >/dev/null
