@@ -231,8 +231,7 @@ dump_packets()
 
     # Dump the packets to a file
     local filename=$(printf "ch%i_packets.pcap" $channel)
-    dump_fast_pcap -pmem    $CONTIG_ADDR \
-                   -packets $max_packets \
+    dump_fast_pcap -packets $max_packets \
                    -blocks  $max_blocks  \
                    -addr    $CONTIG_ADDR \
                    -tsfreq  $tsfreq      \
@@ -620,7 +619,7 @@ playback()
     # Unpack the PCAP file into RAM
     if [ $replay -eq 0 ]; then
         physram $addr -clear
-        unpack_pcap -addr $addr -size 0x100000000 -pmem $CONTIG_ADDR $filename
+        unpack_pcap -addr $addr -size 0x100000000 $filename
         test $? -ne 0 && return
     fi
 
