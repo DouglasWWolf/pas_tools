@@ -231,12 +231,12 @@ dump_packets()
 
     # Dump the packets to a file
     local filename=$(printf "ch%i_packets.pcap" $channel)
-    test $max_blocks -gt 2000 && echo "This could take several minutes..."
-    dump_fast_pcap -packets $max_packets \
+    dump_fast_pcap -pmem    $CONTIG_ADDR \
+                   -packets $max_packets \
                    -blocks  $max_blocks  \
                    -addr    $CONTIG_ADDR \
                    -tsfreq  $tsfreq      \
-                   $filename
+                    $filename
 
 }
 #==============================================================================

@@ -96,9 +96,17 @@ nic1_base_addr=$((${nic1_base_addr%% *}))
 abm0_buffer=$((nic0_base_addr + 0x1000000))
 abm1_buffer=$((nic1_base_addr + 0x1000000))
 
+# Find out whether we're using /dev/pmem0 to address RAM
+offset=0
+pmem=
+if [ -b /dev/pmem0 ]; then
+   read -r _ offset <<< $(contig -plain)
+   pmem=-pmem
+fi
+
 # Load the two files into the buffers
-physram $abm0_buffer 0x10_0000 -load $file1
-physram $abm1_buffer 0x10_0000 -load $file2
+physram $pmem $(abm0_buffer - offset) 0x10_0000 -load $file1
+physram $pmem $(abm1_buffer - offset) 0x10_0000 -load $file2
 
 # And send the two ABMs
 nic0 xmit $abm0_buffer 0x10_0000
@@ -121,8 +129,8 @@ testfile2=~/abm1_test.dat
 sleep .5
 
 # Fetch the two recieved ABMs
-physram $nic0_base_addr 0x10_0000 -save $testfile1
-physram $nic1_base_addr 0x10_0000 -save $testfile2
+physram $pmem $(nic0_base_addr - offset) 0x10_0000 -save $testfile1
+physram $pmem $(nic1_base_addr - offset) 0x10_0000 -save $testfile2
 
 # Find out if the ABMs we received match what we sent
 diff -q $file1 $testfile1 >/dev/null
