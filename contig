@@ -75,14 +75,17 @@ get_contig()
     # If we don't have a memmap setting, we're done
     test -z $memmap && return
 
-    # If there's not a dollar sign in that token, we're done
-    echo $memmap | grep -q "\$" || return
+    # Get rid of the backslashes in memmap
+    memmap=$(echo $memmap | sed 's/\\//g')
 
-    # Extract the size of the contig buffer
-    token1=${memmap%%\$*}
-    
-    # Extract the address of the contig buffer
-    token2=${memmap#*$}
+    # Split it in half at either the '!' or at the '$'
+    IFS="!" read -r token1 token2 <<< $(echo $memmap)
+    if [ -z $token2 ]; then
+        IFS="\$" read -r token1 token2 <<< $(echo $memmap)
+    fi
+
+    # If there's no token2, "memmap" is in some unknown format
+    test -z $token2 && return
 
     # Export the address and size of the reserved contig buffer
     export CONTIG_SIZE=$(kmg_to_num $token1)
