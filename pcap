@@ -2,46 +2,728 @@
 # pcap - Captures packets
 # Author: D. Wolf
 #
-# This script requires that the u55c_packet_capture RTL be loaded into the 
+# This script requires that the u55c_fast_pcap RTL be loaded into the 
 # FPGA card
 #==============================================================================
 
-if [ $(pcireg -dec 20) -ne 121475 ]; then
-    echo "The packet_capture bitstream is not loaded into the FPGA!"
+
+
+#=============================================================================
+# This function expects a value in KMG format and displays the decimal
+# equivalent of the value.
+#=============================================================================
+kmg_to_num()
+{
+    # Fetch the token we're supposed to translate
+    token=$1
+
+    # Fetch the base value (without the K, M, or G modifiers)
+    value=$(echo $token | sed 's/[[:alpha:]]//g')
+
+    # If it's a "K" modifer, return the scaled value
+    echo $token | grep -q K
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 ))
+        return
+    fi
+
+    # If it's a "M" modifer, return the scaled value
+    echo $token | grep -q M
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 * 1024 ))
+        return
+    fi
+
+    # If it's a "G" modifer, return the scaled value
+    echo $token | grep -q G
+    if [ $? -eq 0 ]; then
+        echo $(( value * 1024 * 1024 * 1024))
+        return
+    fi
+
+    # If we get here, there was no K, M, or G modifier
+    echo $value
+}
+#=============================================================================
+
+
+#=============================================================================
+# This function searches for the "memmap" kernel parameter and parses it to
+# determine the address and size of the reserved contiguous buffer
+#=============================================================================
+get_contig()
+{
+    # For the moment, we don't known the address or size of our contig buffer
+    export CONTIG_ADDR=
+    export CONTIG_SIZE=
+
+    # Fetch the Linux boot command
+    cmdline=$(cat /proc/cmdline)
+
+    # Turn that into an array
+    word=(${cmdline})
+
+    # So far, we don't have a memmap token
+    memmap=""
+
+    # Loop through each of the tokens, looking for "memmap="
+    for token in ${word[@]}; do
+        echo $token | grep -q "^memmap="
+        if [ $? -eq 0 ]; then
+            memmap=${token##*=}
+            break;
+        fi
+    done
+
+    # If we don't have a memmap setting, we're done
+    test -z $memmap && return
+
+    # If there's not a dollar sign in that token, we're done
+    echo $memmap | grep -q "\$" || return
+
+    # Extract the size of the contig buffer
+    token1=${memmap%%\$*}
+
+    # Extract the address of the contig buffer
+    token2=${memmap#*$}
+
+    # Export the address and size of the reserved contig buffer
+    export CONTIG_SIZE=$(kmg_to_num $token1)
+    export CONTIG_ADDR=$(kmg_to_num $token2)
+}
+#=============================================================================
+
+
+
+
+
+#==============================================================================
+# Uses the registers defined in "fast_pcap_reg.h" to define a new set of
+# environment variables, replacing "REG_xxx" with "CH0_xxx" and "CH1_xxx"
+#==============================================================================
+rename_registers()
+{
+    while IFS='=' read -r name addr; do
+        test -z $addr && continue
+        local addr0=$((addr))
+        local addr1=$((addr + 0x1000))
+        local new_name0=$(echo $name | sed 's/^REG_/CH0_/g')
+        local new_name1=$(echo $name | sed 's/^REG_/CH1_/g')
+        local cmd0=$(printf "%s=0x%X" $new_name0 $addr0)
+        local cmd1=$(printf "%s=0x%X" $new_name1 $addr1)
+        eval $cmd0
+        eval $cmd1
+    done <<< $(set | grep "^REG_")
+}
+#==============================================================================
+
+
+
+#==============================================================================
+# Display the Ethernet link status
+#==============================================================================
+display_link_status()
+{
+    local link_ok=link_ok
+    local no_link=no_link
+    local bits=$(pcireg -dec $REG_LINK_STATUS)
+
+    if [ $bits -eq 3 ]; then
+        echo $link_ok
+        exit 0
+    else
+        echo -n "QSFP_0 "
+        test $(( bits & 1)) -ne 0 && echo $link_ok || echo $no_link
+        echo -n "QSFP_1 "
+        test $(( bits & 2)) -ne 0 && echo $link_ok || echo $no_link
+        exit 1
+    fi
+}
+#==============================================================================
+
+
+
+#==============================================================================
+# This dumps captured packets to a file
+#==============================================================================
+dump_packets()
+{
+    local channel=$1
+    local max_packets=$2
+    local max_blocks=0
+    local blocks=0
+    local packets=0
+    local REG_HOST_ADDR=0
+    local REG_BLOCK_COUNT=0
+    local REG_PACKET_COUNT=0
+    local REG_COPY_TO_HOST=0
+    local REG_TS_FREQUENCY=0
+
+    # Determine which registers we need to access
+    if [ $channel -eq 0 ]; then
+           REG_HOST_ADDR=$CH0_HOST_ADDR
+         REG_BLOCK_COUNT=$CH0_BLOCK_COUNT
+        REG_PACKET_COUNT=$CH0_PACKET_COUNT
+        REG_COPY_TO_HOST=$CH0_COPY_TO_HOST
+        REG_TS_FREQUENCY=$CH0_TS_FREQUENCY
+    else
+           REG_HOST_ADDR=$CH1_HOST_ADDR
+         REG_BLOCK_COUNT=$CH1_BLOCK_COUNT
+        REG_PACKET_COUNT=$CH1_PACKET_COUNT
+        REG_COPY_TO_HOST=$CH1_COPY_TO_HOST
+        REG_TS_FREQUENCY=$CH1_TS_FREQUENCY
+    fi
+
+    # How many packets were captured and how many blocks did it take?
+     blocks=$(pcireg -dec $REG_BLOCK_COUNT)
+    packets=$(pcireg -dec $REG_PACKET_COUNT)
+
+    # If the user didn't tell us how many packets to fetch, then we will
+    # fetch every packet of every block.
+    # If the user DID tell us how many packets to fetch, try to optimize
+    # the number of blocks that we map
+    if [ -z $max_packets ]; then
+        max_packets=$packets
+         max_blocks=$blocks
+    else
+         max_blocks=$((3 * max_packets))
+         test $max_blocks -gt $blocks && max_blocks=$blocks
+    fi
+
+    # Find out the frequency of the timestamp clock
+    tsfreq=$(pcireg -dec $REG_TS_FREQUENCY)
+
+
+    # Find out where the contiguous buffer is and how big it is
+    get_contig
+    if [ -z $CONTIG_SIZE ]; then
+        echo "NO CONTIGUOUS SPACE DECLARED!"
+        return
+    fi
+
+    # Find out how much RAM it will take to accomodate the number
+    # of blocks that were captured
+    bytes_required=$((blocks * 4096))
+
+    # Will the number of blocks fit into our contiguous buffer?
+    if [ $bytes_required -gt $CONTIG_SIZE ]; then
+        echo "Captured packets won't fit in contiguous RAM!"
+        return 
+    fi
+
+    # Tell the FPGA where our contiguous buffer is
+    pcireg $REG_HOST_ADDR $CONTIG_ADDR
+
+    # For safety, clear the beginning of the contiguous buffer
+    physram $CONTIG_ADDR -clear
+
+    # Tell the FPGA to copy the packets to host RAM, and wait 
+    # for it to finish
+    pcireg $REG_COPY_TO_HOST 1
+    while [ $(pcireg -dec $REG_COPY_TO_HOST) -ne 0 ]; do
+        sleep .1
+    done
+
+    # Dump the packets to a file
+    local filename=$(printf "ch%i_packets.pcap" $channel)
+    test $max_blocks -gt 2000 && echo "This could take several minutes..."
+    dump_fast_pcap -packets $max_packets \
+                   -blocks  $max_blocks  \
+                   -addr    $CONTIG_ADDR \
+                   -tsfreq  $tsfreq      \
+                   $filename
+
+}
+#==============================================================================
+
+
+
+#==============================================================================
+# This captures packets and writes them to a file
+#==============================================================================
+capture()
+{
+    # Determine how many packets we're going to dump to a file
+    local max_packets=$1
+
+    # Start the capture on both channels
+    pcireg $CH0_ENABLE 1
+    pcireg $CH1_ENABLE 1
+
+    # Wait for the user to press ENTER before dumping packets
+    echo "Send packets, and press ENTER to dump them to files"
+    read
+
+    # Halt the capture
+    pcireg $CH0_ENABLE 0
+    pcireg $CH1_ENABLE 0
+
+    # Wait for the capture to complete on both channels
+    while [ $(pcireg -dec $CH0_CAP_COMPLETE) -eq 0 ]; do
+        sleep .1
+    done
+    while [ $(pcireg -dec $CH1_CAP_COMPLETE) -eq 0 ]; do
+        sleep .1
+    done
+
+    # Find out how many packets we captured on each QSFP port
+    local packets0=$(pcireg -dec $CH0_PACKET_COUNT)
+    local packets1=$(pcireg -dec $CH1_PACKET_COUNT)
+    printf "%8u packets captured on QSFP_0\n" $packets0
+    printf "%8u packets captured on QSFP_1\n" $packets1
+
+    test $packets0 -gt 0 && dump_packets 0 $max_packets
+    test $packets1 -gt 0 && dump_packets 1 $max_packets
+
+    # If packet files were created, tell the user where they are
+    if [ $packets0 -gt 0 ] ||  [ $packets1 -gt 0 ]; then
+        echo "Packet files are in $folder"
+    fi
+
+    return
+}
+#==============================================================================
+
+#==============================================================================
+# This turns loopback mode on or off on the CMACs
+#==============================================================================
+loopback()
+{
+    local state0=""
+    local state1=""
+    local reg0=0x1_0090
+    local reg1=0x2_0090
+
+    if [ -z $1 ]; then
+        test $(pcireg -dec $reg0) -eq 0 && state0="off" || state0="on"
+        test $(pcireg -dec $reg1) -eq 0 && state1="off" || state1="on"
+        echo "QSFP_0 loopback is" $state0
+        echo "QSFP_1 loopback is" $state1
+        return
+    fi
+
+    if [ $1 == "off" ]; then
+        pcireg $reg0 0
+        pcireg $reg1 0
+    else
+        pcireg $reg0 1
+        pcireg $reg1 1
+    fi
+}
+#==============================================================================
+
+
+#==============================================================================
+# This causes generated packets to be transmitted.  This is useful for 
+# testing the RTL when there are loopback connectors plugged in
+#==============================================================================
+generate_packets()
+{
+    local channel=$1
+    local size=$2
+    local count=$3
+    local REG_SEND_COUNT=0
+    local REG_SEND_SIZE=0
+    local REG_SEND=0
+
+    if [ -z $channel ] || [ $channel -lt 0 ] || [ $channel -gt 1 ]; then
+        echo "Invalid channel number"
+        return
+    fi
+
+    # Set some reasonable defaults for missing parameters
+    test -z $size  && size=4096
+    test -z $count && count=10
+
+    # Determine which registers we need to access
+    if [ $channel -eq 0 ]; then
+              REG_SEND=$CH0_SEND
+         REG_SEND_SIZE=$CH0_SEND_SIZE
+        REG_SEND_COUNT=$CH0_SEND_COUNT
+    else
+              REG_SEND=$CH1_SEND
+         REG_SEND_SIZE=$CH1_SEND_SIZE
+        REG_SEND_COUNT=$CH1_SEND_COUNT
+    fi
+
+    # Connect the packet generator to the CMAC
+    set_tx_mux $channel 0
+
+    # Start generating packets
+    pcireg $REG_SEND_COUNT $count
+    pcireg $REG_SEND_SIZE  $size
+    pcireg $REG_SEND       1
+
+    # Wait for packet generation to be complete
+    while [ $(pcireg -dec $REG_SEND) -ne 0 ]; do
+        sleep .1
+    done
+}
+#==============================================================================
+
+#==============================================================================
+# Selects an input for a TX mux.
+#   Input port 0 = Packet Gen/Xmit mechanism is connected to CMAC
+#   Input port 1 = Playback mechanism is connected to CMAC
+#==============================================================================
+set_tx_mux()
+{
+    channel=$1
+    value=$2
+    if [ "$channel" == "0" ]; then
+        pcireg $CH0_PB_MUX_SEL $value
+    elif [ "$channel" == "1" ]; then
+        pcireg $CH1_PB_MUX_SEL $value
+    fi
+}
+#==============================================================================
+
+
+#==============================================================================
+# Display the contents of a CMAC register
+#==============================================================================
+showreg()
+{
+    name=$1
+    offset=$2
+    
+    # Compute the address we want to read
+    addr=$((cmac_base + offset))
+
+    printf "%32s = " $name
+    pcireg $addr
+}
+#==============================================================================
+
+
+#==============================================================================
+# This displays statistics from a CMAC
+#
+# The register definitions are given in:
+#   "Ultrascale+ Devices Integrated 100G Subsystem LogiCORE IP Produce Guide"
+#   (i.e., Xilinx/AMD PG203)
+#==============================================================================
+display_statistics()
+{
+    local channel=$1
+
+    # Make sure the user specified a channel number
+    if [ -z $channel ]; then
+        echo "Missing channel number"
+        return
+    fi
+
+    # Make sure channel number is valid
+    if [ $channel != "0" ] && [ $channel != "1" ]; then
+        echo "Invalid channel number"
+        return
+    fi
+
+    # Determine the base address of the CMAC AXI4-Lite interface
+    test $channel -eq 0 && cmac_base=0x10000 || cmac_base=0x20000
+
+    # Fetch the statistics by writing a 1 to TICK_REG
+    pcireg $((cmac_base + 0x2B0)) 1
+    
+    # Fetch the RX status reg
+    value=$(pcireg -dec $((cmac_base + 0x204)))
+    printf "%32s:\n" "STAT_RX_STATUS_REG"
+    test $((value & 0x0001)) -ne 0 && echo "                  stat_rx_status"
+    test $((value & 0x0002)) -ne 0 && echo "                  stat_rx_aligned"
+    test $((value & 0x0004)) -ne 0 && echo "                  stat_rx_misaligned"
+    test $((value & 0x0008)) -ne 0 && echo "                  stat_rx_aligned_err"
+    test $((value & 0x0010)) -ne 0 && echo "                  stat_rx_hi_ber"
+    test $((value & 0x0020)) -ne 0 && echo "                  stat_rx_remote_fault"
+    test $((value & 0x0040)) -ne 0 && echo "                  stat_rx_local_fault"
+    test $((value & 0x0080)) -ne 0 && echo "                  stat_rx_internal_local_fault"
+    test $((value & 0x0100)) -ne 0 && echo "                  stat_rx_received_local_fault"
+    test $((value & 0x1000)) -ne 0 && echo "                  stat_rx_bad_preamble"
+    test $((value & 0x2000)) -ne 0 && echo "                  stat_rx_bad_sfd"
+    test $((value & 0x4000)) -ne 0 && echo "                  stat_rx_got_signal_os"
+
+
+    echo
+    showreg "STAT_RX_BIP_ERR_0"   0x02c0
+    showreg "STAT_RX_BIP_ERR_1"   0x02c8
+    showreg "STAT_RX_BIP_ERR_2"   0x02D0
+    showreg "STAT_RX_BIP_ERR_3"   0x02d8
+    showreg "STAT_RX_BIP_ERR_4"   0x02e0
+    showreg "STAT_RX_BIP_ERR_5"   0x02e8
+    showreg "STAT_RX_BIP_ERR_6"   0x02f0
+    showreg "STAT_RX_BIP_ERR_7"   0x02f8
+    showreg "STAT_RX_BIP_ERR_8"   0x0300
+    showreg "STAT_RX_BIP_ERR_9"   0x0308
+    showreg "STAT_RX_BIP_ERR_10"  0x0310
+    showreg "STAT_RX_BIP_ERR_11"  0x0318
+    showreg "STAT_RX_BIP_ERR_12"  0x0320
+    showreg "STAT_RX_BIP_ERR_13"  0x0328
+    showreg "STAT_RX_BIP_ERR_14"  0x0330
+    showreg "STAT_RX_BIP_ERR_15"  0x0338
+    showreg "STAT_RX_BIP_ERR_16"  0x0340
+    showreg "STAT_RX_BIP_ERR_17"  0x0348
+    showreg "STAT_RX_BIP_ERR_18"  0x0350
+    showreg "STAT_RX_BIP_ERR_19"  0x0358
+                   
+    echo
+    showreg "STAT_RX_FRAMING_ERR_0"  0x0360
+    showreg "STAT_RX_FRAMING_ERR_1"  0x0368
+    showreg "STAT_RX_FRAMING_ERR_2"  0x0370
+    showreg "STAT_RX_FRAMING_ERR_3"  0x0378
+    showreg "STAT_RX_FRAMING_ERR_4"  0x0380
+    showreg "STAT_RX_FRAMING_ERR_5"  0x0388
+    showreg "STAT_RX_FRAMING_ERR_6"  0x0390
+    showreg "STAT_RX_FRAMING_ERR_7"  0x0398
+    showreg "STAT_RX_FRAMING_ERR_8"  0x03A0
+    showreg "STAT_RX_FRAMING_ERR_8"  0x03A8
+    showreg "STAT_RX_FRAMING_ERR_10" 0x03B0
+    showreg "STAT_RX_FRAMING_ERR_11" 0x03B8
+    showreg "STAT_RX_FRAMING_ERR_12" 0x03C0
+    showreg "STAT_RX_FRAMING_ERR_13" 0x03C8
+    showreg "STAT_RX_FRAMING_ERR_14" 0x03D0
+    showreg "STAT_RX_FRAMING_ERR_15" 0x03D8
+    showreg "STAT_RX_FRAMING_ERR_16" 0x03E0
+    showreg "STAT_RX_FRAMING_ERR_17" 0x03E8
+    showreg "STAT_RX_FRAMING_ERR_18" 0x03F0
+
+    echo
+    showreg "STAT_RX_BAD_CODE" 0x0418
+    
+    echo
+    showreg "STAT_RX_TOTAL_PACKETS"             0x0608
+    showreg "STAT_RX_TOTAL_GOOD_PACKETS"        0x0610
+    showreg "STAT_RX_TOTAL_BYTES"               0x0618
+    showreg "STAT_RX_TOTAL_GOOD_BYTES"          0x0620
+    showreg "STAT_RX_PACKET_64_BYTES"           0x0628
+    showreg "STAT_RX_PACKET_65_127_BYTES"       0x0630
+    showreg "STAT_RX_PACKET_128_255_BYTES"      0x0638
+    showreg "STAT_RX_PACKET_256_511_BYTES"      0x0640
+    showreg "STAT_RX_PACKET_512_1023_BYTES"     0x0648
+    showreg "STAT_RX_PACKET_1024_1518_BYTES"    0x0650
+    showreg "STAT_RX_PACKET_1519_1522_BYTES"    0x0658
+    showreg "STAT_RX_PACKET_1523_1548_BYTES"    0x0660
+    showreg "STAT_RX_PACKET_1549_2047_BYTES"    0x0668     
+    showreg "STAT_RX_PACKET_2048_4095_BYTES"    0x0670    
+    showreg "STAT_RX_PACKET_4096_8191_BYTES"    0x0678       
+    showreg "STAT_RX_PACKET_8192_9215_BYTES"    0x0680      
+    showreg "STAT_RX_PACKET_LARGE"              0x0688           
+    showreg "STAT_RX_PACKET_SMALL"              0x0690        
+
+    echo
+    showreg "STAT_RX_UNDERSIZE"                 0x0698         
+    showreg "STAT_RX_FRAGMENT"                  0x06A0         
+    showreg "STAT_RX_OVERSIZE"                  0x06A8           
+    showreg "STAT_RX_TOOLONG"                   0x06B0          
+    showreg "STAT_RX_JABBER"                    0x06B8         
+    showreg "STAT_RX_BAD_FCS"                   0x06C0              
+    showreg "STAT_RX_PACKET_BAD_FCS"            0x06C8           
+    showreg "STAT_RX_STOMPED_FCS"               0x06D0               
+    showreg "STAT_RX_UNICAST"                   0x06D8             
+    showreg "STAT_RX_MULTICAST"                 0x06E0           
+    showreg "STAT_RX_BROADCAST"                 0x06E8          
+    showreg "STAT_RX_VLAN"                      0x06F0             
+    showreg "STAT_RX_PAUSE"                     0x06F8         
+    showreg "STAT_RX_USER_PAUSE"                0x0700            
+    showreg "STAT_RX_INRANGEERR"                0x0708               
+    showreg "STAT_RX_TRUNCATED"                 0x0710                  
+}
+#==============================================================================
+
+#==============================================================================
+# Play back (i.e., transmit) packets from a PCAP file
+#==============================================================================
+playback()
+{
+    # Find out if the user wants to replay and previously played file
+    replay=0
+    if [ "$1" == "-replay" ]; then
+        shift
+        replay=1
+        channel=$1
+        ipg=$2
+    else
+        replay=0;
+        channel=$1
+        filename=$2
+        ipg=$3
+    fi
+
+    # Make sure channel number is valid
+    if [ "$channel" != "0" ] && [ "$channel" != "1" ]; then
+        echo "Invalid channel number"
+        return
+    fi
+
+    # Makes sure the user gave us a valid filename
+    if [ $replay -eq 0 ]; then
+        if [ -z $filename ]; then
+            echo "Missing filename"
+            return
+        fi
+
+        if [ ! -f $filename ]; then
+            echo "File $filename doesn't exist"
+            return 
+        fi
+    fi
+
+    # If no inter-packet gap was specified, use zero
+    test -z $ipg && ipg=0
+
+    # Fetch the register definitions for this channel
+    if [ $channel -eq 0 ]; then
+              REG_PB_IPG=$CH0_PB_IPG
+            REG_PB_START=$CH0_PB_START
+        REG_PB_HOST_ADDR=$CH0_PB_HOST_ADDR
+        REG_PB_PKTS_SENT=$CH0_PB_PKTS_SENT
+    else
+              REG_PB_IPG=$CH1_PB_IPG
+            REG_PB_START=$CH1_PB_START
+        REG_PB_HOST_ADDR=$CH1_PB_HOST_ADDR
+        REG_PB_PKTS_SENT=$CH1_PB_PKTS_SENT
+    fi
+
+
+    # Find out where the contiguous buffer is and how big it is
+    get_contig
+    if [ -z $CONTIG_SIZE ]; then
+        echo "NO CONTIGUOUS SPACE DECLARED!"
+        return
+    fi
+
+    # Make sure the contiguous buffer is large enough for an 8GB
+    # space to store captured packets, followed by two 4GB spaces
+    # to unpack pcap files into
+    if [ $CONTIG_SIZE -lt $((0x400000000)) ]; then
+        echo "Contiguous buffer must be at least 16GB"
+        return
+    fi
+
+    # Each channel gets its own 4GB buffer, and those buffers are
+    # allocated after the 8GB packet-capture buffer
+    if [ $channel -eq 0 ]; then
+        addr=$((CONTIG_ADDR + 0x200000000))
+    else
+        addr=$((CONTIG_ADDR + 0x300000000))      
+    fi  
+
+    # Make sure there's not a playback already in process!
+    if [ $(pcireg -dec $REG_PB_START) -ne 0 ]; then
+        echo "Playback is already active!"
+        return
+    fi
+   
+    # Unpack the PCAP file into RAM
+    if [ $replay -eq 0 ]; then
+        physram $addr -clear
+        local filesize=$(stat -c %s $filename)
+        test $filesize -gt 10000000 && echo "Unpacking $filename: this could take some time"
+        unpack_pcap -addr $addr -size 0x100000000 $filename
+        test $? -ne 0 && return
+    fi
+
+    # Connect the playback logic the CMAC
+    set_tx_mux $channel 1
+
+    # Fetch the link status bits
+    local link_bits=$(pcireg -dec $REG_LINK_STATUS)
+
+    # Fetch the link status for this channel
+    if [ $channel -eq 0 ]; then
+        link_status=$((link_bits & 1))
+    else
+        link_status=$((link_bits & 2))
+    fi
+    
+    # Don't try to send packets if there's no Ethernet link
+    if [ $link_status -eq 0 ]; then
+        echo "No Ethernet Link!"
+        return
+    fi
+
+    # Tell the FPGA where to read data from in host RAM
+    pcireg $REG_PB_HOST_ADDR $addr
+
+    # Tell the FPGA what value to use for an inter-packet gap
+    pcireg $REG_PB_IPG $ipg
+
+    # Start sending packet from the PCAP file we loaded
+    pcireg $REG_PB_START 1
+
+    # Wait for the FPGA to finish sending packets
+    while [ $(pcireg -dec $REG_PB_START) -ne 0 ]; do
+        sleep .1
+    done
+
+    # Tell the caller how many packets were sent
+    printf "%8u packets sent\n", $(pcireg -dec $REG_PB_PKTS_SENT)
+
+}
+#==============================================================================
+
+
+# Make sure the correct RTL is loaded
+if [ $(pcireg -dec 20) -ne 71026 ]; then
+    echo "The fast_pcap bitstream is not loaded into the FPGA!"
     exit
 fi
 
-# Start the capture
-pcireg 0x1004 1
+# Fetch the register definitions for this RTL design
+source bash_registers $(dirname $0)/fast_pcap_reg.h
+rename_registers
 
-# Wait for the user to press ENTER before dumping packets
-echo "Press ENTER to dump packets"
-read
+# We don't have a base address for CMAC AXI queries yet
+cmac_base=0
 
-# Find out how many packets we're going to dump out
-count=5000
-test "$1" !=  "" && count=$1 
+if [ "$1" == "capture" ]; then
+    shift
+    folder=~/packets
+    mkdir -p $folder
+    cd $folder
+    capture $1
+    exit
+fi
 
-#
-# Force unflushed packets to be flushed to RAM 
-#
-pcireg 0x1004 0
-sleep .1
+if [ "$1" == "play" ]; then
+    shift
+    playback $1 $2 $3 $4 $5
+    exit
+fi
 
-#
-# Determine how many packets to dump out
-#
-count=5000
-test "$1" !=  "" && count=$1 
+if [ "$1" == "replay" ]; then
+    shift
+    playback -replay $1 $2 $3 $4 $5
+    exit
+fi
 
-#
-# Dump packets to disk from both channels
-#
-folder=~/packets
-mkdir -p $folder
-cd $folder
-getpackets -ch 0 $count
-getpackets -ch 1 $count
+if [ "$1" == "xmit" ]; then
+    shift
+    generate_packets $1 $2 $3
+    exit
+fi
 
-# Tell the user where their .pcap files are
-echo "Packet dumps are in $folder"
+if [ "$1" == "loopback" ]; then
+    shift
+    loopback $1
+    exit
+fi
+
+if [ "$1" == "link" ]; then
+    shift
+    display_link_status
+    exit
+fi
+
+if [ "$1" == "stats" ]; then
+    shift
+    display_statistics $1
+    exit
+fi
+
+
+echo "pcap link"
+echo "pcap capture [max_packets]"
+echo "pcap play <0|1> <filename> [ipg]"
+echo "pcap replay <0|1> [ipg]"
+echo "pcap loopback [on | off]"
+echo "pcap xmit <0|1> [packet_count] [packet_size]"
+echo "pcap stats <0|1>"

@@ -92,6 +92,17 @@ link_stat_packet_capture()
 }
 #==============================================================================
 
+#==============================================================================
+# Report the link status from RTL fast_pcap
+#==============================================================================
+{
+    status=$(pcireg -dec 0x1020)
+    stat0=$(( (status >> 0) & 1))
+    stat1=$(( (status >> 1) & 1))
+    show_status $stat0 $stat1
+}
+#==============================================================================
+
 
 # Determine which RTL is loaded into the FPGA
 rtl_type=$(pcireg -dec 20)
@@ -115,6 +126,10 @@ case $rtl_type in
         link_stat_packet_capture
         ;;
         
+    10726)
+       link_stat_fast_pcap
+       ;;
+
     642024)
         echo "link_status not supported by loopback" 1>&2
         ;;
