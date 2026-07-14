@@ -658,7 +658,7 @@ playback()
     done
 
     # Tell the caller how many packets were sent
-    printf "%8u packets sent\n", $(pcireg -dec $REG_PB_PKTS_SENT)
+    printf "%8u packets sent on QSFP_%u\n" $(pcireg -dec $REG_PB_PKTS_SENT) $channel
 
 }
 #==============================================================================
