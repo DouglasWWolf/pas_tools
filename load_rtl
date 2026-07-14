@@ -140,7 +140,7 @@ load_rdmx_nic()
 #=============================================================================
 load_pcap()
 {
-    folder=u55c_packet_capture
+    folder=rsc-rtl-u55c-fast-pcap
     existing=$(pcireg -dec 20)
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
@@ -151,7 +151,7 @@ load_pcap()
     fi
     cd $version
     ./load_bitstream.sh
-    test $existing -eq 121475 && echo "No reboot required" || ask_reboot    
+    test $existing -eq 71026 && echo "No reboot required" || ask_reboot    
 }
 #=============================================================================
 
