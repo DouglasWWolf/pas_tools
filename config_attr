@@ -11,7 +11,6 @@ make_suid()
     sudo chmod 4755 $1
 }
 
-make_suid getpackets
 make_suid dump_fast_pcap
 make_suid unpack_pcap
 
