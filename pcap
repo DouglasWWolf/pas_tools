@@ -289,7 +289,7 @@ capture()
 #==============================================================================
 
 #==============================================================================
-# This turns loopback mode on or off on the CMACs
+# This turns Ethernet loopback mode on or off
 #==============================================================================
 loopback()
 {
@@ -315,6 +315,39 @@ loopback()
     fi
 }
 #==============================================================================
+
+
+#==============================================================================
+# This turns Ethernet RS-FEC mode on or off
+#==============================================================================
+rsfec()
+{
+    local state0=""
+    local state1=""
+    local reg0=0x1_107C
+    local reg1=0x2_107C
+
+    if [ -z $1 ]; then
+        local current0=$(pcireg -dec $reg0)
+        local current1=$(pcireg -dec $reg1)
+        test $((current0 & 3)) -eq 3 && state0="on" || state0="off"
+        test $((current1 & 3)) -eq 3 && state1="on" || state1="off"
+        echo "QSFP_0 RS-FEC is" $state0
+        echo "QSFP_1 RS-FEC is" $state1
+        return
+    fi
+
+    if [ $1 == "off" ]; then
+        pcireg $reg0 0
+        pcireg $reg1 0
+    else
+        pcireg $reg0 3
+        pcireg $reg1 3
+    fi
+}
+#==============================================================================
+
+
 
 
 #==============================================================================
@@ -709,6 +742,13 @@ if [ "$1" == "loopback" ]; then
     exit
 fi
 
+if [ "$1" == "rsfec" ]; then
+    shift
+    rsfec $1
+    exit
+fi
+
+
 if [ "$1" == "link" ]; then
     shift
     display_link_status
@@ -727,5 +767,6 @@ echo "pcap capture [max_packets]"
 echo "pcap play <0|1> <filename> [ipg]"
 echo "pcap replay <0|1> [ipg]"
 echo "pcap loopback [on | off]"
+echo "pcap rsfec [on | off]"
 echo "pcap xmit <0|1> [packet_count] [packet_size]"
 echo "pcap stats <0|1>"
