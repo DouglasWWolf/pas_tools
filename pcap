@@ -318,6 +318,23 @@ loopback()
 
 
 #==============================================================================
+# This resets all transceivers of the CMACs
+#==============================================================================
+reset_gt()
+{
+    local reg0=0x1_0000
+    local reg1=0x2_0000
+
+    pcireg $reg0 1
+    pcireg $reg1 1
+    sleep .1
+    pcireg $reg0 0
+    pcireg $reg1 0
+}
+#==============================================================================
+
+
+#==============================================================================
 # This turns Ethernet RS-FEC mode on or off
 #==============================================================================
 rsfec()
@@ -480,6 +497,7 @@ display_statistics()
 
 
     echo
+    showreg "STAT_RX_BLOCK_LOCK"  0x020C
     showreg "STAT_RX_BIP_ERR_0"   0x02c0
     showreg "STAT_RX_BIP_ERR_1"   0x02c8
     showreg "STAT_RX_BIP_ERR_2"   0x02D0
@@ -748,6 +766,12 @@ if [ "$1" == "rsfec" ]; then
     exit
 fi
 
+if [ "$1" == "reset_gt" ]; then
+    shift
+    reset_gt
+    exit
+fi
+
 
 if [ "$1" == "link" ]; then
     shift
@@ -761,12 +785,12 @@ if [ "$1" == "stats" ]; then
     exit
 fi
 
-
 echo "pcap link"
 echo "pcap capture [max_packets]"
 echo "pcap play <0|1> <filename> [ipg]"
 echo "pcap replay <0|1> [ipg]"
 echo "pcap loopback [on | off]"
 echo "pcap rsfec [on | off]"
+echo "pcap reset_gt"
 echo "pcap xmit <0|1> [packet_count] [packet_size]"
 echo "pcap stats <0|1>"
