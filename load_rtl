@@ -119,7 +119,7 @@ latest_version()
 #=============================================================================
 load_rdmx_nic()
 {
-    folder=u55c_rdmx_dual_nic
+    folder=rsc-rtl-u55c-rdmx-dual-nic
     existing=$(pcireg -dec 20)
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
@@ -162,7 +162,7 @@ load_pcap()
 #=============================================================================
 load_nsdp_checker()
 {
-    folder=u55c_nsdp_checker
+    folder=rsc-rtl-u55c-nsdp-checker
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
     echo "Loading $folder $version into FPGA"
@@ -181,7 +181,7 @@ load_nsdp_checker()
 #=============================================================================
 load_rx_counter()
 {
-    folder=u55c_rx_packet_ctr
+    folder=rsc-rtl-u55c-rx-packet_ctr
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
     echo "Loading $folder $version into FPGA"
@@ -199,7 +199,7 @@ load_rx_counter()
 #=============================================================================
 load_loopback()
 {
-    folder=u55c_loopback
+    folder=rsc-rtl-u55c-loopback
     cd $rtl_folder/$folder
     test -z $version && version=$(latest_version)
     echo "Loading $folder $version into FPGA"

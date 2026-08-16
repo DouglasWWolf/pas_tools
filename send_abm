@@ -6,8 +6,8 @@
 # exactly 1MB (i.e. 1024 * 1024 bytes) in size.  If only one filename is
 # provided, it will be sent to both channels
 #
-# This script requires that the u55c_rdmx_dual_nic RTL be loaded into the 
-# FPGA card
+# This script requires that the rsc-rtl-u55c-rdmx-dual-nic RTL be loaded
+# into the FPGA card
 #
 # This script requires that rdmx_nic_api.sh exists in the same directory as
 # the script
