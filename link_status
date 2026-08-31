@@ -95,6 +95,7 @@ link_stat_packet_capture()
 #==============================================================================
 # Report the link status from RTL fast_pcap
 #==============================================================================
+link_stat_fast_pcap()
 {
     status=$(pcireg -dec 0x1020)
     stat0=$(( (status >> 0) & 1))
